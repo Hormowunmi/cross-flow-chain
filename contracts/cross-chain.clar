@@ -153,3 +153,108 @@
   { source-chain: (string-ascii 20), source-token: (string-ascii 20), target-chain: (string-ascii 20) }
   { target-token: (string-ascii 20) }
 )
+
+;; Initiate a cross-chain swap
+(define-public (initiate-cross-chain-swap
+  (source-chain (string-ascii 20))
+  (source-token (string-ascii 20))
+  (source-amount uint)
+  (target-chain (string-ascii 20))
+  (target-token (string-ascii 20))
+  (recipient principal)
+  (hash-lock (buff 32))
+  (execution-path (list 5 { chain: (string-ascii 20), token: (string-ascii 20), pool: principal }))
+  (slippage-bp uint))
+  
+  (let (
+    (swap-id (var-get next-swap-id))
+    (current-block block-height)
+    (timeout-block (+ current-block (var-get default-timeout-blocks)))
+    (protocol-fee (/ (* source-amount (var-get protocol-fee-bp)) u10000))
+    (ref-hash (generate-ref-hash swap-id hash-lock current-block))
+  )
+    ;; Check if emergency shutdown is active
+    (asserts! (not (var-get emergency-shutdown)) err-emergency-shutdown)
+    
+    ;; Validate parameters
+    (asserts! (> source-amount u0) err-invalid-parameters)
+    (asserts! (<= slippage-bp (var-get max-slippage-bp)) err-slippage-too-high)
+    
+    ;; Validate source and target chains exist
+    (asserts! (is-some (map-get? chains { chain-id: source-chain })) err-chain-not-found)
+    (asserts! (is-some (map-get? chains { chain-id: target-chain })) err-chain-not-found)
+    
+    ;; Validate execution path
+    (asserts! (validate-execution-path source-chain source-token target-chain target-token execution-path) err-invalid-path)
+    
+    ;; Create swap record
+    (map-set swaps { swap-id: swap-id } {
+      initiator: tx-sender,
+      source-chain: source-chain,
+      source-token: source-token,
+      source-amount: source-amount,
+      target-chain: target-chain,
+      target-token: target-token,
+      target-amount: u0, ;; Will be calculated during execution
+      recipient: recipient,
+      timeout-block: timeout-block,
+      hash-lock: hash-lock,
+      preimage: none,
+      status: u0, ;; Pending
+      execution-path: execution-path,
+      max-slippage-bp: slippage-bp,
+      protocol-fee: protocol-fee,
+      relayer-fee: u0,
+      relayer: none,
+      creation-block: current-block,
+      completion-block: none,
+      ref-hash: ref-hash
+    })
+    
+    ;; Increment swap ID
+    (var-set next-swap-id (+ swap-id u1))
+    
+    (ok swap-id)
+  )
+)
+
+;; Generate reference hash for cross-chain tracking
+(define-private (generate-ref-hash (swap-id uint) (hash-lock (buff 32)) (block uint))
+  ;; Create a simple reference hash 
+  (let (
+    (reference (keccak256 hash-lock))
+  )
+    ;; Return a 64-character hex string representation
+    "0000000000000000000000000000000000000000000000000000000000000000"
+  )
+)
+
+;; Execute a cross-chain swap with preimage
+(define-public (execute-cross-chain-swap
+  (swap-id uint)
+  (preimage (buff 32)))
+  
+  (let (
+    (swap-data (unwrap! (map-get? swaps { swap-id: swap-id }) err-swap-not-found))
+    (hash-check (keccak256 preimage))
+  )
+    ;; Verify swap exists and is pending
+    (asserts! (is-eq (get status swap-data) u0) err-already-executed)
+    
+    ;; Verify preimage matches hash-lock
+    (asserts! (is-eq hash-check (get hash-lock swap-data)) err-invalid-preimage)
+    
+    ;; Check timeout hasn't expired
+    (asserts! (< block-height (get timeout-block swap-data)) err-timeout-expired)
+    
+    ;; Update swap status to completed
+    (map-set swaps { swap-id: swap-id } 
+      (merge swap-data { 
+        status: u1, ;; Completed
+        preimage: (some preimage),
+        completion-block: (some block-height)
+      }))
+    
+    (ok true)
+  )
+)
