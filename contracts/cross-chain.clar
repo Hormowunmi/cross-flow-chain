@@ -284,6 +284,32 @@
   )
 )
 
+;; Read-only functions for data access
+(define-read-only (get-swap (swap-id uint))
+  (map-get? swaps { swap-id: swap-id })
+)
+
+(define-read-only (get-cached-route (route-id uint))
+  (map-get? route-cache { route-id: route-id })
+)
+
+(define-read-only (get-swap-status-string (swap-id uint))
+  (let (
+    (swap-data (map-get? swaps { swap-id: swap-id }))
+  )
+    (match swap-data
+      swap-info (let (
+        (status (get status swap-info))
+      )
+        (if (is-eq status u0) "Pending"
+        (if (is-eq status u1) "Completed"
+        (if (is-eq status u2) "Refunded"
+        "Expired"))))
+      "Not Found"
+    )
+  )
+)
+
 ;; Helper to get estimated output amount
 (define-private (get-estimated-output
   (source-chain (string-ascii 20))
