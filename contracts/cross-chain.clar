@@ -52,17 +52,104 @@
 ;; 0 = Pending, 1 = Completed, 2 = Refunded, 3 = Expired
 (define-data-var swap-statuses (list 4 (string-ascii 10)) (list "Pending" "Completed" "Refunded" "Expired"))
 
-;; cross-chain
-;; <add a description here>
+;; Supported blockchains
+(define-map chains
+  { chain-id: (string-ascii 20) }
+  {
+    name: (string-ascii 40),
+    adapter-contract: principal,
+    status: uint,
+    confirmation-blocks: uint,
+    block-time: uint, ;; Average block time in seconds
+    chain-token: (string-ascii 10), ;; Chain's native token symbol
+    btc-connection-type: (string-ascii 20), ;; "native", "wrapped", "bridged"
+    enabled: bool,
+    base-fee: uint, ;; Base fee for transactions on this chain
+    fee-multiplier: uint, ;; Dynamic fee multiplier
+    last-updated: uint
+  }
+)
 
-;; constants
-;;
+;; Liquidity pools
+(define-map liquidity-pools
+  { chain-id: (string-ascii 20), token-id: (string-ascii 20) }
+  {
+    token-contract: principal,
+    total-liquidity: uint,
+    available-liquidity: uint,
+    committed-liquidity: uint,
+    min-swap-amount: uint,
+    max-swap-amount: uint,
+    fee-bp: uint, ;; Fee in basis points
+    active: bool,
+    last-volume-24h: uint,
+    cumulative-volume: uint,
+    cumulative-fees: uint,
+    last-price: uint, ;; Last price in STX
+    creation-block: uint,
+    last-updated: uint
+  }
+)
 
-;; data maps and vars
-;;
+;; Cross-chain swaps
+(define-map swaps
+  { swap-id: uint }
+  {
+    initiator: principal,
+    source-chain: (string-ascii 20),
+    source-token: (string-ascii 20),
+    source-amount: uint,
+    target-chain: (string-ascii 20),
+    target-token: (string-ascii 20),
+    target-amount: uint,
+    recipient: principal,
+    timeout-block: uint,
+    hash-lock: (buff 32),
+    preimage: (optional (buff 32)),
+    status: uint,
+    execution-path: (list 5 { chain: (string-ascii 20), token: (string-ascii 20), pool: principal }),
+    max-slippage-bp: uint,
+    protocol-fee: uint,
+    relayer-fee: uint,
+    relayer: (optional principal),
+    creation-block: uint,
+    completion-block: (optional uint),
+    ref-hash: (string-ascii 64) ;; Reference hash for cross-chain tracking
+  }
+)
 
-;; private functions
-;;
+;; Price oracles for tokens
+(define-map price-oracles
+  { chain-id: (string-ascii 20), token-id: (string-ascii 20) }
+  {
+    oracle-contract: principal,
+    last-price: uint, ;; In STX with 8 decimal precision
+    last-updated: uint,
+    heartbeat: uint, ;; Maximum time between updates in blocks
+    deviation-threshold: uint, ;; Max allowed deviation in basis points
+    trusted: bool
+  }
+)
 
-;; public functions
-;;
+;; Optimal routes cache
+(define-map route-cache
+  { route-id: uint }
+  {
+    source-chain: (string-ascii 20),
+    source-token: (string-ascii 20),
+    target-chain: (string-ascii 20),
+    target-token: (string-ascii 20),
+    path: (list 5 { chain: (string-ascii 20), token: (string-ascii 20), pool: principal }),
+    estimated-output: uint,
+    estimated-fees: uint,
+    timestamp: uint,
+    expiry: uint,
+    gas-estimate: uint
+  }
+)
+
+;; Token mappings across chains
+(define-map token-mappings
+  { source-chain: (string-ascii 20), source-token: (string-ascii 20), target-chain: (string-ascii 20) }
+  { target-token: (string-ascii 20) }
+)
