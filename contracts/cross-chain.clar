@@ -258,3 +258,63 @@
     (ok true)
   )
 )
+
+;; Refund a swap after timeout
+(define-public (refund-swap (swap-id uint))
+  (let (
+    (swap-data (unwrap! (map-get? swaps { swap-id: swap-id }) err-swap-not-found))
+  )
+    ;; Verify swap exists and is still pending
+    (asserts! (is-eq (get status swap-data) u0) err-already-executed)
+    
+    ;; Verify timeout has been reached
+    (asserts! (>= block-height (get timeout-block swap-data)) err-timeout-not-reached)
+    
+    ;; Verify caller is the initiator
+    (asserts! (is-eq tx-sender (get initiator swap-data)) err-not-authorized)
+    
+    ;; Update swap status to refunded
+    (map-set swaps { swap-id: swap-id } 
+      (merge swap-data { 
+        status: u2, ;; Refunded
+        completion-block: (some block-height)
+      }))
+    
+    (ok true)
+  )
+)
+
+;; Helper to get estimated output amount
+(define-private (get-estimated-output
+  (source-chain (string-ascii 20))
+  (source-token (string-ascii 20))
+  (source-amount uint)
+  (target-chain (string-ascii 20))
+  (target-token (string-ascii 20)))
+  
+  ;; Simple estimation - in a real implementation this would use price oracles
+  (let (
+    (protocol-fee (/ (* source-amount (var-get protocol-fee-bp)) u10000))
+    (net-amount (- source-amount protocol-fee))
+  )
+    ;; For now, assume 1:1 ratio minus fees
+    net-amount
+  )
+)
+
+;; Validate execution path
+(define-private (validate-execution-path
+  (source-chain (string-ascii 20))
+  (source-token (string-ascii 20))
+  (target-chain (string-ascii 20))
+  (target-token (string-ascii 20))
+  (path (list 5 { chain: (string-ascii 20), token: (string-ascii 20), pool: principal })))
+  
+  ;; For now, basic validation - path should not be empty and should connect source to target
+  (let (
+    (path-length (len path))
+  )
+    ;; Validate path is not empty and has reasonable length
+    (and (> path-length u0) (<= path-length (var-get max-route-hops)))
+  )
+)
